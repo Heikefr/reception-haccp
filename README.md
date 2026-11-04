@@ -2,6 +2,19 @@
 
 Appli de saisie des livraisons pour la cuisine. Les données vont dans un Google Sheet, et les photos des étiquettes dans un dossier Google Drive (compte de l'établissement).
 
+## Mise à jour vers la version 2.2 (à faire une fois)
+
+L'appli se met à jour toute seule. Il faut seulement mettre à jour le script Google :
+
+1. Ouvre le Google Sheet du registre, puis **Extensions > Apps Script** (dans une fenêtre où seul le compte de l'établissement est connecté).
+2. Remplace tout le contenu de `Code.gs` par le nouveau fichier `Code.gs`, puis enregistre (Ctrl+S).
+3. Menu de gauche : **Services** (+) > **Drive API** > **Ajouter**. Cela sert à lire le texte des étiquettes et à mettre les vignettes dans le registre PDF.
+4. En haut, choisis la fonction **installer**, puis **Exécuter**. Accepte les nouvelles autorisations : envoi d'e-mails, documents, tâches automatiques.
+   Elle ajoute les nouveaux onglets (*Relevés frigos*, *Frigos et chambres froides*) et les nouveaux réglages, sans rien effacer.
+5. **Déployer > Gérer les déploiements** > crayon ✏ > Version : **Nouvelle version** > **Déployer**. L'adresse `/exec` ne change pas.
+
+Nouveautés : plusieurs photos par livraison et bon de livraison, recherche par numéro de lot, relevé des frigos, e-mails au responsable, registre PDF mensuel, espace responsable et mode hors ligne.
+
 ## Les 3 morceaux
 
 | Fichier | Rôle | Où il va |
