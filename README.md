@@ -7,7 +7,7 @@ Appli de saisie des livraisons pour la cuisine. Les données vont dans un Google
 | Fichier | Rôle | Où il va |
 |---|---|---|
 | `Code.gs` | Le « serveur » : il range les livraisons dans le Sheet et les photos dans Drive | Dans le Google Sheet, menu Extensions > Apps Script |
-| `index.html`, `sw.js`, `manifest.webmanifest`, les 3 icônes `.png` | L'appli elle-même | Sur GitHub Pages, comme le carnet de la Lexus |
+| `index.html`, `sw.js`, `manifest.webmanifest`, les icônes `.png` (dont `favicon.png`) | L'appli elle-même | Sur GitHub Pages, comme le carnet de la Lexus |
 | `README.md` | Ce guide | GitHub (facultatif) |
 
 ## Étape 1 — Le Google Sheet (compte de l'établissement)
