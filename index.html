@@ -417,7 +417,7 @@ const Attente = (() => {
 function versAffichage(it){
   if (it.kind === 'releve') return Object.assign({}, it.data, {_attente:true});
   const d = it.data;
-  return Object.assign({}, d, {photos:undefined, photoBon:undefined, photoIds:[], _attente:true, _photos:d.photos || [], _bon:d.photoBon || '', traitement:'', erreur:it.erreur});
+  return Object.assign({}, d, {photo:undefined, photos:undefined, photoBon:undefined, photoIds:[], _attente:true, _photos:d.photos || [], _bon:d.photoBon || '', traitement:'', erreur:it.erreur});
 }
 function fusionner(){
   if (!D) return;
@@ -891,7 +891,7 @@ async function enregistrer(){
   s.envoi = true; redessinerSaisie();
   const t = tempValeur();
   const rec = {id:uid(), date:new Date().toISOString(), agent:s.agent, fournisseur:s.fournisseur, type:s.type, temperature:t,
-    controleTemp: controle(s.type, t), conformite:s.conformite, motif:s.motifs.join(', '), remarque:s.remarque.trim(), photos:s.photos, photoBon:s.bon};
+    controleTemp: controle(s.type, t), conformite:s.conformite, motif:s.motifs.join(', '), remarque:s.remarque.trim(), photos:s.photos, photoBon:s.bon, photo:s.photos[0]}; // photo : compatibilité avec l'ancien script
   try{ await mettreEnAttente('reception', rec); }
   catch(x){ s.envoi = false; redessinerSaisie(); toast("Impossible d'enregistrer sur l'appareil. Réessayez.", true); return; }
   if (!D.fournisseurs.includes(rec.fournisseur)) D.fournisseurs.push(rec.fournisseur);

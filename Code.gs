@@ -260,7 +260,7 @@ function ajouterReception_(r) {
     if (trouverLigne_(sh, r.id)) return { ok: true, doublon: true }; // déjà reçue (renvoi après coupure)
 
     var date = r.date ? new Date(r.date) : new Date();
-    var photos = (r.photos || (r.photo ? [r.photo] : []));
+    var photos = (r.photos && r.photos.length) ? r.photos : (r.photo ? [r.photo] : []);
     var base = Utilities.formatDate(date, Session.getScriptTimeZone(), "yyyy-MM-dd_HH'h'mm") + '_' + nettoyer_(r.fournisseur) + '_' + nettoyer_(r.type);
     var ids = [], urls = [];
     photos.forEach(function (p, i) {
