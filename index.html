@@ -1470,6 +1470,7 @@ function vueReglages(){
     ${lien ? `<p class="small muted" style="margin:0">Pour installer l'appli sur une autre tablette, ouvrez ce lien sur elle : elle sera reliée directement.</p>
       <div class="inline"><input id="r-lien" class="input small" readonly value="${esc(lien)}"><button class="btn" id="r-copie">Copier</button></div>` : ''}
     <button class="btn" id="r-maj">Recharger les données</button>
+    ${!EN_CADRE && 'serviceWorker' in navigator ? `<button class="btn btn-ghost" id="r-update">Chercher une mise à jour de l'appli</button>` : ''}
     ${edition === 'deco' ? `<p class="missing">Cet appareil ne sera plus relié. Les données restent dans le Google Sheet.${attente.length ? ` Attention : ${plur(attente.length, 'saisie')} pas encore envoyée${attente.length>1?'s':''} sera perdue.` : ''}</p><div class="inline"><button class="btn" id="r-non" style="flex:1">Garder</button><button class="btn btn-danger" id="r-oui" style="flex:1">Délier</button></div>`
       : `<button class="btn btn-ghost" id="r-deco">${cfg.demo ? 'Quitter le mode démo' : 'Délier cet appareil'}</button>`}
   </section>
@@ -1552,6 +1553,11 @@ function lierReglages(){
     };
   }
   const cp = $('#r-copie'); if (cp) cp.onclick = () => { const i = $('#r-lien'); navigator.clipboard.writeText(i.value).then(() => toast('Lien copié'), () => { i.select(); toast('Sélectionnez puis copiez le lien'); }); };
+  const up = $('#r-update'); if (up) up.onclick = async () => {
+    up.disabled = true; up.textContent = 'Recherche…';
+    try{ const reg = await navigator.serviceWorker.getRegistration(); if (reg) await reg.update(); }catch(e){}
+    toast("Mise à jour de l'appli…"); setTimeout(() => location.reload(), 600);
+  };
   $('#r-maj').onclick = async () => { try{ await envoyerAttente(); await charger(); render(); toast('Données à jour'); }catch(x){ toast(x.message, true); } };
   const dc = $('#r-deco'); if (dc) dc.onclick = () => { edition = 'deco'; render(); };
   const non = $('#r-non'); if (non) non.onclick = () => { edition = null; render(); };
@@ -1588,6 +1594,6 @@ demarrer();
 })();
 </script>
 
-<script>if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js');</script>
+<script>if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js', {updateViaCache:'none'});</script>
 </body>
 </html>
