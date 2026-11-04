@@ -2,6 +2,11 @@
 
 Appli de saisie des livraisons pour la cuisine. Les données vont dans un Google Sheet, et les photos des étiquettes dans un dossier Google Drive (compte de l'établissement).
 
+## Mise à jour vers la version 2.3
+
+Comme pour la 2.2 : colle le nouveau `Code.gs`, exécute **installer**, puis **Déployer > Gérer les déploiements > ✏ > Nouvelle version**. Il n'y a pas de nouveau service à ajouter.
+La fonction `installer` ajoute le réglage `code_utilisateur` (0000 par défaut, à changer dans l'espace responsable) et la colonne *Corrections*.
+
 ## Mise à jour vers la version 2.2 (à faire une fois)
 
 L'appli se met à jour toute seule. Il faut seulement mettre à jour le script Google :

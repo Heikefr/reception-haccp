@@ -1,5 +1,5 @@
 /**
- * RÉCEPTION HACCP — Lycée St Vincent de Paul (Soissons) — script Google, version 2.2
+ * RÉCEPTION HACCP — Lycée St Vincent de Paul (Soissons) — script Google, version 2.3
  *
  * INSTALLATION OU MISE À JOUR
  * 1) Collez ce fichier à la place de tout le contenu de "Code.gs", puis enregistrez.
@@ -11,7 +11,7 @@
  *    (L'adresse /exec ne change pas.)
  */
 
-var VERSION = '2.2';
+var VERSION = '2.3';
 
 var ONGLET_RECEPTIONS = 'Réceptions';
 var ONGLET_RELEVES = 'Relevés frigos';
@@ -27,7 +27,7 @@ var COLONNES = [
   'ID', 'Date et heure', 'Réceptionné par', 'Fournisseur', 'Type de produit',
   'Température (°C)', 'Contrôle température', 'Conformité', 'Motif non-conformité',
   'Remarque', 'Photo étiquette', 'ID photo', 'Traitement', 'Commentaire traitement',
-  'Traité par', 'Date traitement', 'ID photo bon de livraison', 'Texte lu sur les étiquettes'
+  'Traité par', 'Date traitement', 'ID photo bon de livraison', 'Texte lu sur les étiquettes', 'Corrections'
 ];
 var C = {}; COLONNES.forEach(function (n, i) { C[n] = i; });
 
@@ -37,6 +37,7 @@ var R = {}; COL_RELEVES.forEach(function (n, i) { R[n] = i; });
 var REGLAGES_DEFAUT = [
   ['code_acces', null, 'Code à saisir une fois sur chaque tablette ou téléphone'],
   ['code_responsable', null, "Code de l'espace responsable dans l'appli"],
+  ['code_utilisateur', '0000', "Code demandé pour corriger une saisie (le nom de la personne et l'ancienne valeur sont gardés)"],
   ['etablissement', 'Lycée St Vincent de Paul — Soissons', "Nom affiché dans l'appli et sur le registre PDF"],
   ['email_responsable', '', 'Adresse(s) qui reçoivent les e-mails, séparées par des virgules. Vide = aucun e-mail'],
   ['mail_soir', 'Oui', 'Chaque soir vers 18 h : non-conformités pas traitées et relevés manquants (seulement s\'il y en a)'],
@@ -137,13 +138,14 @@ function doPost(e) {
       case 'ajouter': return ajouterReception_(d.reception);
       case 'releve': return ajouterReleve_(d.releve);
       case 'traiter': return traiter_(d);
+      case 'modifier': return modifier_(d);
       case 'responsable': verifierResponsable_(d.code); return { ok: true };
       case 'config': verifierResponsable_(d.code); return { ok: true, config: configResponsable_() };
       case 'setConfig': verifierResponsable_(d.code); return { ok: true, config: enregistrerConfig_(d.config || {}) };
       case 'enceintes': verifierResponsable_(d.code); return { ok: true, enceintes: enregistrerEnceintes_(d.liste || []) };
       case 'listes': return modifierListe_(d);
-      case 'testMail': verifierResponsable_(d.code); return { ok: true, envoye: envoyerMail_('Test — Réception HACCP', '<p>Les e-mails du registre de réception arrivent bien à cette adresse.</p>') };
-      case 'registre': return { ok: true, registre: genererRegistre_(Number(d.annee), Number(d.mois)) };
+      case 'testMail': verifierResponsable_(d.code); return { ok: true, envoye: envoyerMail_('Test — Réception HACCP', '<p>Les e-mails du registre de réception arrivent bien à cette adresse.</p>' + etatDuJour_()) };
+      case 'registre': var rg = genererRegistre_(Number(d.annee), Number(d.mois)); return { ok: true, registre: { url: rg.url, nom: rg.nom } };
       default: throw new Error('Action inconnue');
     }
   });
@@ -164,7 +166,7 @@ function donneesInitiales_() {
   var receptions = lignes_(ONGLET_RECEPTIONS, COLONNES.length)
     .filter(function (l) { return l[C['ID']] && dateDe_(l[C['Date et heure']]) >= limite; })
     .map(versObjet_).reverse();
-  var lim2 = new Date(); lim2.setDate(lim2.getDate() - 62);
+  var lim2 = new Date(); lim2.setDate(lim2.getDate() - 120);
   var releves = lignes_(ONGLET_RELEVES, COL_RELEVES.length)
     .filter(function (l) { return l[R['ID']] && dateDe_(l[R['Date et heure']]) >= lim2; })
     .map(releveObjet_).reverse();
@@ -197,6 +199,7 @@ function versObjet_(l) {
     photoIds: ids,
     photoBon: String(l[C['ID photo bon de livraison']] || ''),
     ocr: String(l[C['Texte lu sur les étiquettes']] || '').slice(0, 3000),
+    corrections: String(l[C['Corrections']] || ''),
     traitement: l[C['Traitement']],
     commentaireTraitement: l[C['Commentaire traitement']],
     traitePar: l[C['Traité par']],
@@ -339,6 +342,41 @@ function traiter_(d) {
   } finally { lock.releaseLock(); }
 }
 
+// Correction d'une saisie : on garde l'ancienne valeur, le nom et l'heure dans la colonne "Corrections"
+function modifier_(d) {
+  var codeU = reglage_('code_utilisateur') || '0000';
+  var c = String(d.code || '').trim();
+  if (c !== codeU && c !== reglage_('code_responsable')) throw new Error('Code incorrect');
+  if (!d.par) throw new Error('Indiquez votre nom');
+  var ch = d.champs || {};
+  var lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    var sh = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ONGLET_RECEPTIONS);
+    var row = trouverLigne_(sh, d.id);
+    if (!row) throw new Error('Livraison introuvable');
+    var l = sh.getRange(row, 1, 1, COLONNES.length).getValues()[0];
+    var map = { fournisseur: 'Fournisseur', type: 'Type de produit', temperature: 'Température (°C)', controleTemp: 'Contrôle température',
+                conformite: 'Conformité', motif: 'Motif non-conformité', remarque: 'Remarque' };
+    var lib = { fournisseur: 'fournisseur', type: 'produit', temperature: 'température', conformite: 'conformité', motif: 'motif', remarque: 'remarque' };
+    var diffs = [];
+    Object.keys(map).forEach(function (k) {
+      if (ch[k] === undefined) return;
+      var col = C[map[k]], avant = l[col];
+      var apres = k === 'temperature' ? (ch[k] === null || ch[k] === '' ? '' : Number(ch[k])) : String(ch[k]);
+      if (String(avant) === String(apres)) return;
+      l[col] = apres;
+      if (lib[k]) diffs.push(lib[k] + ' : ' + (k === 'temperature' ? temp_(avant) + ' → ' + temp_(apres) : '« ' + (avant || '—') + ' » → « ' + (apres || '—') + ' »'));
+    });
+    if (!diffs.length) return { ok: true, reception: versObjet_(l), inchange: true };
+    var trace = dateTxt_(new Date()) + ' — ' + d.par + ' : ' + diffs.join(' ; ');
+    l[C['Corrections']] = (l[C['Corrections']] ? l[C['Corrections']] + '\n' : '') + trace;
+    if (l[C['Conformité']] !== 'Non conforme') { l[C['Traitement']] = ''; l[C['Commentaire traitement']] = ''; l[C['Traité par']] = ''; l[C['Date traitement']] = ''; }
+    sh.getRange(row, 1, 1, COLONNES.length).setValues([l]);
+    sh.getRange(row, 1, 1, COLONNES.length).setBackground(l[C['Conformité']] === 'Non conforme' ? (l[C['Traitement']] ? '#f4d6d2' : '#fde2df') : null);
+    return { ok: true, reception: versObjet_(l) };
+  } finally { lock.releaseLock(); }
+}
+
 function modifierListe_(d) {
   verifierResponsable_(d.code);
   var nom = d.liste === 'agents' ? ONGLET_AGENTS : d.liste === 'fournisseurs' ? ONGLET_FOURNISSEURS : null;
@@ -371,6 +409,7 @@ function configResponsable_() {
     mailSoir: reglage_('mail_soir').toLowerCase() !== 'non',
     mailLundi: reglage_('mail_lundi').toLowerCase() !== 'non',
     alerteImmediate: reglage_('alerte_immediate').toLowerCase() !== 'non',
+    codeUtilisateur: reglage_('code_utilisateur'),
     enceintes: enceintes_(true)
   };
 }
@@ -384,6 +423,11 @@ function enregistrerConfig_(c) {
   if (c.mailSoir !== undefined) ecrireReglage_('mail_soir', c.mailSoir ? 'Oui' : 'Non');
   if (c.mailLundi !== undefined) ecrireReglage_('mail_lundi', c.mailLundi ? 'Oui' : 'Non');
   if (c.alerteImmediate !== undefined) ecrireReglage_('alerte_immediate', c.alerteImmediate ? 'Oui' : 'Non');
+  if (c.codeUtilisateur !== undefined) {
+    var cu = String(c.codeUtilisateur).trim();
+    if (!/^[0-9A-Za-z]{4,8}$/.test(cu)) throw new Error('Le code utilisateur doit faire 4 à 8 chiffres ou lettres');
+    ecrireReglage_('code_utilisateur', cu);
+  }
   return configResponsable_();
 }
 
@@ -420,10 +464,10 @@ function lireTexte_(id) {
 
 /* ================================================================ e-mails */
 
-function envoyerMail_(sujet, html) {
+function envoyerMail_(sujet, html, pj) {
   var to = reglage_('email_responsable');
   if (!to) return false;
-  MailApp.sendEmail({ to: to, subject: '[HACCP] ' + sujet, name: 'Réception HACCP',
+  MailApp.sendEmail({ to: to, subject: '[HACCP] ' + sujet, name: 'Réception HACCP', attachments: pj || [],
     htmlBody: '<div style="font-family:Arial,sans-serif;font-size:14px;color:#231f20">' + html +
       '<p style="color:#888;font-size:12px">' + esc_(reglage_('etablissement')) + ' — <a href="' + SpreadsheetApp.getActiveSpreadsheet().getUrl() + '">ouvrir le registre</a></p></div>' });
   return true;
@@ -476,10 +520,22 @@ function tacheMailLundi() {
 
 /* ================================================================ registre PDF */
 
+function etatDuJour_() {
+  var tz = Session.getScriptTimeZone(), auj = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd');
+  var jourDe = function (v) { return Utilities.formatDate(dateDe_(v), tz, 'yyyy-MM-dd'); };
+  var L = lignes_(ONGLET_RECEPTIONS, COLONNES.length).filter(function (l) { return l[C['ID']] && jourDe(l[C['Date et heure']]) === auj; });
+  var Rl = lignes_(ONGLET_RELEVES, COL_RELEVES.length).filter(function (l) { return l[R['ID']] && jourDe(l[R['Date et heure']]) === auj; });
+  var nc = lignes_(ONGLET_RECEPTIONS, COLONNES.length).filter(function (l) { return l[C['ID']] && l[C['Conformité']] === 'Non conforme' && !l[C['Traitement']]; });
+  return '<h3 style="margin:16px 0 6px">État du registre aujourd\'hui</h3><ul>' +
+    '<li>Livraisons reçues aujourd\'hui : <b>' + L.length + '</b></li>' +
+    '<li>Relevés de frigos aujourd\'hui : <b>' + Rl.length + '</b>' + (Rl.length ? ' (' + Rl.map(function (l) { return esc_(l[R['Frigo / chambre froide']]) + ' ' + temp_(l[R['Température (°C)']]); }).join(', ') + ')' : '') + '</li>' +
+    '<li>Non-conformités à traiter : <b>' + nc.length + '</b></li></ul>';
+}
+
 function tacheRegistreMensuel() {
   var d = new Date(); d.setDate(1); d.setMonth(d.getMonth() - 1);
   var reg = genererRegistre_(d.getFullYear(), d.getMonth() + 1);
-  envoyerMail_('Registre de ' + reg.libelle, '<p>Le registre du mois est prêt : <a href="' + reg.url + '">' + esc_(reg.nom) + '</a></p>');
+  envoyerMail_('Registre de ' + reg.libelle, '<p>Le registre du mois est en pièce jointe et rangé dans Drive : <a href="' + reg.url + '">' + esc_(reg.nom) + '</a></p>' + reg.resume, [reg.blob]);
 }
 
 function genererRegistre_(annee, mois) {
@@ -508,7 +564,7 @@ function genererRegistre_(annee, mois) {
     h += '<tr' + (nonConf ? ' class="nc"' : '') + '><td>' + dateTxt_(l[C['Date et heure']]) + '</td><td>' + esc_(l[C['Fournisseur']]) + '</td><td>' + esc_(l[C['Type de produit']]) +
       '</td><td>' + temp_(l[C['Température (°C)']]) + '</td><td>' + esc_(l[C['Conformité']]) + (l[C['Motif non-conformité']] ? '<br><i>' + esc_(l[C['Motif non-conformité']]) + '</i>' : '') +
       '</td><td>' + esc_(l[C['Traitement']] || (nonConf ? 'À traiter' : '')) + (l[C['Traité par']] ? '<br>par ' + esc_(l[C['Traité par']]) : '') +
-      '</td><td>' + esc_(l[C['Réceptionné par']]) + '</td><td>' + (img ? '<img src="' + img + '">' : (id ? 'Photo dans Drive' : '—')) + '</td></tr>';
+      '</td><td>' + esc_(l[C['Réceptionné par']]) + (l[C['Corrections']] ? '<br><i>corrigée</i>' : '') + '</td><td>' + (img ? '<img src="' + img + '">' : (id ? 'Photo dans Drive' : '—')) + '</td></tr>';
   });
   if (!L.length) h += '<tr><td colspan="8">Aucune livraison ce mois-ci.</td></tr>';
   h += '</table><h2>Relevés des frigos et chambres froides</h2><table><tr><th>Date</th><th>Frigo / chambre froide</th><th>T°</th><th>Contrôle</th><th>Relevé par</th><th>Action corrective</th></tr>';
@@ -524,7 +580,17 @@ function genererRegistre_(annee, mois) {
   var dossier = dossier_(DOSSIER_REGISTRES);
   var anciens = dossier.getFilesByName(nom); while (anciens.hasNext()) anciens.next().setTrashed(true);
   var f = dossier.createFile(pdf);
-  return { url: f.getUrl(), nom: nom, libelle: libelle };
+  var ncL = L.filter(function (l) { return l[C['Conformité']] === 'Non conforme'; });
+  var horsR = Rl.filter(function (l) { return l[R['Contrôle']] === 'Hors norme'; });
+  var resume = '<h3 style="margin:16px 0 6px">Résumé de ' + libelle + '</h3><ul>' +
+    '<li>Livraisons reçues : <b>' + L.length + '</b>, dont <b>' + ncL.length + '</b> non conforme(s)</li>' +
+    '<li>Relevés de frigos : <b>' + Rl.length + '</b>, dont <b>' + horsR.length + '</b> hors norme</li></ul>';
+  if (ncL.length) resume += '<p><b>Non-conformités :</b></p><ul>' + ncL.map(function (l) {
+    return '<li>' + dateTxt_(l[C['Date et heure']]) + ' — ' + esc_(l[C['Fournisseur']]) + ' (' + esc_(l[C['Type de produit']]) + ', ' + temp_(l[C['Température (°C)']]) + ') : ' +
+      esc_(l[C['Motif non-conformité']] || '—') + ' → ' + esc_(l[C['Traitement']] || 'pas traitée') + '</li>'; }).join('') + '</ul>';
+  if (horsR.length) resume += '<p><b>Températures de frigos hors norme :</b></p><ul>' + horsR.map(function (l) {
+    return '<li>' + dateTxt_(l[R['Date et heure']]) + ' — ' + esc_(l[R['Frigo / chambre froide']]) + ' : ' + temp_(l[R['Température (°C)']]) + ' — action : ' + esc_(l[R['Action corrective']] || 'non renseignée') + '</li>'; }).join('') + '</ul>';
+  return { url: f.getUrl(), nom: nom, libelle: libelle, resume: resume, blob: f.getBlob() };
 }
 
 function vignette_(id, token) {
